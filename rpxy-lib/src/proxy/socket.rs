@@ -15,6 +15,7 @@ pub(super) fn bind_tcp_socket(listening_on: &SocketAddr) -> Result<TcpSocket> {
     TcpSocket::new_v4()
   }?;
   tcp_socket.set_reuseaddr(true)?;
+  #[cfg(all(unix, not(target_os = "solaris"), not(target_os = "illumos")))]
   tcp_socket.set_reuseport(true)?;
   if let Err(e) = tcp_socket.bind(*listening_on) {
     error!("Failed to bind TCP socket: {}", e);
@@ -33,6 +34,7 @@ pub(super) fn bind_udp_socket(listening_on: &SocketAddr) -> Result<UdpSocket> {
     Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))
   }?;
   socket.set_reuse_address(true)?; // This isn't necessary?
+  #[cfg(all(unix, not(target_os = "solaris"), not(target_os = "illumos")))]
   socket.set_reuse_port(true)?;
 
   if let Err(e) = socket.bind(&(*listening_on).into()) {
