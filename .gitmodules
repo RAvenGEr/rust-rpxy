@@ -1,9 +1,9 @@
 [submodule "h3"]
 	path = h3
-	url = git@github.com:junkurihara/h3.git
+	url = https://github.com/junkurihara/h3.git
 [submodule "quinn"]
 	path = quinn
-	url = git@github.com:junkurihara/quinn.git
+	url = https://github.com/junkurihara/quinn.git
 [submodule "s2n-quic"]
 	path = s2n-quic
-	url = git@github.com:junkurihara/s2n-quic.git
+	url = https://github.com/junkurihara/s2n-quic.git
