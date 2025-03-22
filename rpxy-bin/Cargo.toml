@@ -54,6 +54,7 @@ clap = { version = "4.5.32", features = [
 toml = { version = "0.8.20", default-features = false, features = ["parse"] }
 hot_reload = "0.1.8"
 serde_ignored = "0.1.11"
+shellflip = { git = "https://github.com/cloudflare/shellflip", rev = "4892ea1ef83ad044ac354d4d84b3ea7d93137c96" }
 
 # logging
 tracing = { version = "0.1.41" }

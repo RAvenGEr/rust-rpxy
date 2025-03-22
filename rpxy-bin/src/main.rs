@@ -14,10 +14,19 @@ use crate::{
   error::*,
   log::*,
 };
+use async_trait::async_trait;
 use hot_reload::{ReloaderReceiver, ReloaderService};
 use rpxy_lib::{entrypoint, RpxyOptions, RpxyOptionsBuilder};
+use shellflip::lifecycle::*;
+use shellflip::{RestartConfig, ShutdownCoordinator, ShutdownHandle, ShutdownSignal};
 use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::{pin, select};
 use tokio_util::sync::CancellationToken;
+
+struct RestartData {
+  restart_generation: u32,
+}
 
 fn main() {
   init_logger();
@@ -36,10 +45,67 @@ fn main() {
   let runtime = runtime_builder.build().unwrap();
 
   runtime.block_on(async {
+    const RESTART_SOCKET: &str = "/run/rpxy/restart.sock";
+
+    let mut app_data = RestartData { restart_generation: 0 };
+
+    if let Some(mut handover_pipe) = receive_from_old_process() {
+      app_data.restart_generation = handover_pipe.read_u32().await.expect("Handover failure") + 1;
+    }
+
+    let restart_generation = app_data.restart_generation;
+
+    // Configure the essential requirements for implementing graceful restart.
+    let restart_conf = RestartConfig {
+      enabled: true,
+      coordination_socket_path: RESTART_SOCKET.into(),
+      lifecycle_handler: Box::new(app_data),
+      ..Default::default()
+    };
+
+    if parsed_opts.restart {
+      let res = restart_conf.request_restart().await;
+      match res {
+        Ok(id) => {
+          info!("Restart succeeded, child pid is {}", id);
+          std::process::exit(0);
+        }
+        Err(e) => {
+          error!("Restart failed: {}", e);
+          std::process::exit(1);
+        }
+      }
+    }
+
+    // Start the restart thread and get a task that will complete when a restart completes.
+    let restart_task = restart_conf.try_into_restart_task().unwrap();
+    // (need to pin this because of the loop below!)
+    pin!(restart_task);
+
+    // Restart incompatible with watch for now
     if !parsed_opts.watch {
-      if let Err(e) = rpxy_service_without_watcher(&config_toml, runtime.handle().clone()).await {
-        error!("rpxy service existed: {e}");
-        std::process::exit(1);
+      let cancel_token = tokio_util::sync::CancellationToken::new();
+      select! {
+        res = rpxy_service_without_watcher(&config_toml, runtime.handle().clone(), cancel_token.clone()) => {
+          if let Err(e) = res {
+            error!("rpxy service existed: {e}");
+            std::process::exit(1);
+          }
+        }
+        res = &mut restart_task => {
+            match res {
+                Ok(_) => {
+                      info!("Restart successful, waiting for tasks to complete");
+                }
+                Err(e) => {
+                      error!("Restart task failed: {}", e);
+                }
+            }
+            // Wait for all clients to complete.
+            cancel_token.cancel();
+            info!("Exiting...");
+            std::process::exit(0);
+        }
       }
     } else {
       let (config_service, config_rx) = ReloaderService::<ConfigTomlReloader, ConfigToml, String>::new(
@@ -235,14 +301,29 @@ impl RpxyService {
   }
 }
 
+#[async_trait]
+impl LifecycleHandler for RestartData {
+  async fn send_to_new_process(&mut self, mut write_pipe: PipeWriter) -> std::io::Result<()> {
+    if self.restart_generation > 4 {
+      log::info!("Four restarts is more than anybody needs, surely?");
+      return Err(std::io::Error::new(
+        std::io::ErrorKind::Other,
+        "The operation completed successfully",
+      ));
+    }
+    write_pipe.write_u32(self.restart_generation).await?;
+    Ok(())
+  }
+}
+
 async fn rpxy_service_without_watcher(
   config_toml: &ConfigToml,
   runtime_handle: tokio::runtime::Handle,
+  cancel_token: CancellationToken,
 ) -> Result<(), anyhow::Error> {
   info!("Start rpxy service");
   let service = RpxyService::new(config_toml, runtime_handle).await?;
-  // Create cancel token that is never be called as dummy
-  service.start(tokio_util::sync::CancellationToken::new()).await
+  service.start(cancel_token).await
 }
 
 async fn rpxy_service_with_watcher(

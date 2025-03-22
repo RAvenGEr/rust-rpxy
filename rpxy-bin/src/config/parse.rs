@@ -19,6 +19,9 @@ pub struct Opts {
   /// Activate dynamic reloading of the config file via continuous monitoring
   #[arg(short, long)]
   pub watch: bool,
+  /// Trigger restart
+  #[arg(long)]
+  pub restart: bool,
 }
 
 pub fn build_settings(config: &ConfigToml) -> std::result::Result<(ProxyConfig, AppConfigList), anyhow::Error> {
