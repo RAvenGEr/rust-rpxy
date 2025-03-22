@@ -1,13 +1,5 @@
 name: Release - Build and publish docker, and trigger package release
-on:
-  push:
-    branches:
-      - "feat/*"
-      - "develop"
-  pull_request:
-    types: [closed]
-    branches:
-      - main
+on: workflow_dispatch
 
 env:
   GHCR: ghcr.io
