@@ -9,7 +9,7 @@ mod log;
 #[cfg(feature = "acme")]
 use crate::config::build_acme_manager;
 use crate::{
-  config::{build_cert_manager, build_settings, parse_opts, ConfigToml, ConfigTomlReloader},
+  config::{build_cert_manager, build_settings, ConfigToml, ConfigTomlReloader, Opts, Parser},
   constants::CONFIG_WATCH_DELAY_SECS,
   error::*,
   log::*,
@@ -21,21 +21,23 @@ use tokio_util::sync::CancellationToken;
 
 fn main() {
   init_logger();
+  let parsed_opts = Opts::parse();
 
+  let config_toml = match ConfigToml::new(&parsed_opts.config_file_path) {
+    Ok(conf) => conf,
+    Err(e) => {
+      error!("Invalid toml file: {e}");
+      std::process::exit(1);
+    }
+  };
   let mut runtime_builder = tokio::runtime::Builder::new_multi_thread();
   runtime_builder.enable_all();
   runtime_builder.thread_name("rpxy");
   let runtime = runtime_builder.build().unwrap();
 
   runtime.block_on(async {
-    // Initially load options
-    let Ok(parsed_opts) = parse_opts() else {
-      error!("Invalid toml file");
-      std::process::exit(1);
-    };
-
     if !parsed_opts.watch {
-      if let Err(e) = rpxy_service_without_watcher(&parsed_opts.config_file_path, runtime.handle().clone()).await {
+      if let Err(e) = rpxy_service_without_watcher(&config_toml, runtime.handle().clone()).await {
         error!("rpxy service existed: {e}");
         std::process::exit(1);
       }
@@ -234,12 +236,11 @@ impl RpxyService {
 }
 
 async fn rpxy_service_without_watcher(
-  config_file_path: &str,
+  config_toml: &ConfigToml,
   runtime_handle: tokio::runtime::Handle,
 ) -> Result<(), anyhow::Error> {
   info!("Start rpxy service");
-  let config_toml = ConfigToml::new(config_file_path).map_err(|e| anyhow!("Invalid toml file: {e}"))?;
-  let service = RpxyService::new(&config_toml, runtime_handle).await?;
+  let service = RpxyService::new(config_toml, runtime_handle).await?;
   // Create cancel token that is never be called as dummy
   service.start(tokio_util::sync::CancellationToken::new()).await
 }

@@ -1,7 +1,7 @@
 use super::toml::ConfigToml;
 use crate::error::{anyhow, ensure};
 use ahash::HashMap;
-use clap::{Arg, ArgAction};
+pub use clap::Parser;
 use hot_reload::{ReloaderReceiver, ReloaderService};
 use rpxy_certs::{build_cert_reloader, CryptoFileSourceBuilder, CryptoReloader, ServerCryptoBase};
 use rpxy_lib::{AppConfig, AppConfigList, ProxyConfig};
@@ -10,37 +10,15 @@ use rpxy_lib::{AppConfig, AppConfigList, ProxyConfig};
 use rpxy_acme::{AcmeManager, ACME_DIR_URL, ACME_REGISTRY_PATH};
 
 /// Parsed options
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
 pub struct Opts {
+  /// Configuration file path like ./config.toml
+  #[arg(short, long = "config", value_name = "FILE")]
   pub config_file_path: String,
+  /// Activate dynamic reloading of the config file via continuous monitoring
+  #[arg(short, long)]
   pub watch: bool,
-}
-
-/// Parse arg values passed from cli
-pub fn parse_opts() -> Result<Opts, anyhow::Error> {
-  let _ = include_str!("../../Cargo.toml");
-  let options = clap::command!()
-    .arg(
-      Arg::new("config_file")
-        .long("config")
-        .short('c')
-        .value_name("FILE")
-        .required(true)
-        .help("Configuration file path like ./config.toml"),
-    )
-    .arg(
-      Arg::new("watch")
-        .long("watch")
-        .short('w')
-        .action(ArgAction::SetTrue)
-        .help("Activate dynamic reloading of the config file via continuous monitoring"),
-    );
-  let matches = options.get_matches();
-
-  ///////////////////////////////////
-  let config_file_path = matches.get_one::<String>("config_file").unwrap().to_owned();
-  let watch = matches.get_one::<bool>("watch").unwrap().to_owned();
-
-  Ok(Opts { config_file_path, watch })
 }
 
 pub fn build_settings(config: &ConfigToml) -> std::result::Result<(ProxyConfig, AppConfigList), anyhow::Error> {
