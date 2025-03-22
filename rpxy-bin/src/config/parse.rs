@@ -1,7 +1,7 @@
 use super::toml::ConfigToml;
 use crate::error::{anyhow, ensure};
 use ahash::HashMap;
-use clap::Arg;
+pub use clap::Parser;
 use hot_reload::{ReloaderReceiver, ReloaderService};
 use rpxy_certs::{CryptoFileSourceBuilder, CryptoReloader, ServerCryptoBase, build_cert_reloader};
 use rpxy_lib::{AppConfig, AppConfigList, ProxyConfig};
@@ -10,40 +10,15 @@ use rpxy_lib::{AppConfig, AppConfigList, ProxyConfig};
 use rpxy_acme::{ACME_DIR_URL, ACME_REGISTRY_PATH, AcmeManager};
 
 /// Parsed options
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
 pub struct Opts {
+  /// Configuration file path like ./config.toml
+  #[arg(short, long = "config", value_name = "FILE")]
   pub config_file_path: String,
+  /// Directory for log files. If not specified, logs are printed to stdout.
+  #[arg(short, long = "log-dir", value_name = "LOG_DIR")]
   pub log_dir_path: Option<String>,
-}
-
-/// Parse arg values passed from cli
-pub fn parse_opts() -> Result<Opts, anyhow::Error> {
-  let _ = include_str!("../../Cargo.toml");
-  let options = clap::command!()
-    .arg(
-      Arg::new("config_file")
-        .long("config")
-        .short('c')
-        .value_name("FILE")
-        .required(true)
-        .help("Configuration file path like ./config.toml"),
-    )
-    .arg(
-      Arg::new("log_dir")
-        .long("log-dir")
-        .short('l')
-        .value_name("LOG_DIR")
-        .help("Directory for log files. If not specified, logs are printed to stdout."),
-    );
-  let matches = options.get_matches();
-
-  ///////////////////////////////////
-  let config_file_path = matches.get_one::<String>("config_file").unwrap().to_owned();
-  let log_dir_path = matches.get_one::<String>("log_dir").map(|v| v.to_owned());
-
-  Ok(Opts {
-    config_file_path,
-    log_dir_path,
-  })
 }
 
 pub fn build_settings(config: &ConfigToml) -> std::result::Result<(ProxyConfig, AppConfigList), anyhow::Error> {

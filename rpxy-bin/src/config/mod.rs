@@ -3,7 +3,7 @@ mod service;
 mod toml;
 
 pub use {
-  parse::{build_cert_manager, build_settings, parse_opts},
+  parse::{build_cert_manager, build_settings, Opts, Parser},
   service::ConfigTomlReloader,
   toml::ConfigToml,
 };

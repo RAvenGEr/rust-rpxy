@@ -9,7 +9,7 @@ mod log;
 #[cfg(feature = "acme")]
 use crate::config::build_acme_manager;
 use crate::{
-  config::{ConfigToml, ConfigTomlReloader, build_cert_manager, build_settings, parse_opts},
+  config::{ConfigToml, ConfigTomlReloader, Opts, Parser, build_cert_manager, build_settings},
   constants::CONFIG_WATCH_DELAY_SECS,
   error::*,
   log::*,
@@ -20,19 +20,20 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 fn main() {
+  let parsed_opts = Opts::parse();
+  init_logger(parsed_opts.log_dir_path.as_deref());
+
+  // Validate configuration before starting Tokio runtime
+  if let Err(e) = ConfigToml::new(&parsed_opts.config_file_path) {
+    error!("Invalid toml file: {e}");
+    std::process::exit(1);
+  }
   let mut runtime_builder = tokio::runtime::Builder::new_multi_thread();
   runtime_builder.enable_all();
   runtime_builder.thread_name("rpxy");
   let runtime = runtime_builder.build().unwrap();
 
   runtime.block_on(async {
-    // Initially load options
-    let Ok(parsed_opts) = parse_opts() else {
-      std::process::exit(1);
-    };
-
-    init_logger(parsed_opts.log_dir_path.as_deref());
-
     let (config_service, config_rx) = ReloaderService::<ConfigTomlReloader, ConfigToml, String>::new(
       &parsed_opts.config_file_path,
       CONFIG_WATCH_DELAY_SECS,
