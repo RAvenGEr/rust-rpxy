@@ -37,10 +37,12 @@ fn init_file_logger(level: tracing::Level, log_dir_path: &str) {
   println!("Access log: {}", access_log_path.display());
   println!("System and error log: {}", system_log_path.display());
 
-  let access_log = open_log_file(&access_log_path);
-  let system_log = open_log_file(&system_log_path);
-
   let reg = tracing_subscriber::registry();
+
+  let access_log_appender = tracing_appender::rolling::daily(&log_dir_path, ACCESS_LOG_FILE);
+  let (access_non_blocking, _guard) = tracing_appender::non_blocking(access_log_appender);
+  let system_log_appender = tracing_appender::rolling::daily(log_dir_path, SYSTEM_LOG_FILE);
+  let (system_non_blocking, _guard) = tracing_appender::non_blocking(system_log_appender);
 
   let access_log_base = fmt::layer()
     .with_line_number(false)
@@ -50,7 +52,7 @@ fn init_file_logger(level: tracing::Level, log_dir_path: &str) {
     .with_level(false)
     .compact()
     .with_ansi(false);
-  let reg = reg.with(access_log_base.with_writer(access_log).with_filter(AccessLogFilter));
+  let reg = reg.with(access_log_base.with_writer(access_non_blocking).with_filter(AccessLogFilter));
 
   let system_log_base = fmt::layer()
     .with_line_number(false)
@@ -62,7 +64,7 @@ fn init_file_logger(level: tracing::Level, log_dir_path: &str) {
     .with_ansi(false);
   let reg = reg.with(
     system_log_base
-      .with_writer(system_log)
+      .with_writer(system_non_blocking)
       .with_filter(tracing_subscriber::filter::filter_fn(move |metadata| {
         (metadata
           .target()
@@ -122,18 +124,4 @@ impl<S> tracing_subscriber::layer::Filter<S> for AccessLogFilter {
       && metadata.name().contains(log_event_names::ACCESS_LOG)
       && metadata.level() <= &tracing::Level::INFO
   }
-}
-
-#[inline]
-/// Create a file for logging
-fn open_log_file<P>(path: P) -> std::fs::File
-where
-  P: AsRef<std::path::Path>,
-{
-  // crate a file if it does not exist
-  std::fs::OpenOptions::new()
-    .create(true)
-    .append(true)
-    .open(path)
-    .expect("Failed to open the log file")
 }
