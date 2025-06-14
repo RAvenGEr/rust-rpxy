@@ -1,6 +1,7 @@
 use crate::constants::{ACCESS_LOG_FILE, SYSTEM_LOG_FILE};
 use rpxy_lib::log_event_names;
-use std::str::FromStr;
+use std::{str::FromStr, sync::OnceLock};
+use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{fmt, prelude::*};
 
 #[allow(unused)]
@@ -24,6 +25,9 @@ pub fn init_logger(log_dir_path: Option<&str>) {
   }
 }
 
+static ACCESS_LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
+static SYSTEM_LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
+
 /// file logging TODO:
 fn init_file_logger(level: tracing::Level, log_dir_path: &str) {
   let log_dir_path = std::path::PathBuf::from(log_dir_path);
@@ -40,9 +44,11 @@ fn init_file_logger(level: tracing::Level, log_dir_path: &str) {
   let reg = tracing_subscriber::registry();
 
   let access_log_appender = tracing_appender::rolling::daily(&log_dir_path, ACCESS_LOG_FILE);
-  let (access_non_blocking, _guard) = tracing_appender::non_blocking(access_log_appender);
+  let (access_non_blocking, guard) = tracing_appender::non_blocking(access_log_appender);
+  _ = ACCESS_LOG_GUARD.set(guard);
   let system_log_appender = tracing_appender::rolling::daily(log_dir_path, SYSTEM_LOG_FILE);
-  let (system_non_blocking, _guard) = tracing_appender::non_blocking(system_log_appender);
+  let (system_non_blocking, guard) = tracing_appender::non_blocking(system_log_appender);
+  _ = SYSTEM_LOG_GUARD.set(guard);
 
   let access_log_base = fmt::layer()
     .with_line_number(false)
